@@ -3,7 +3,7 @@ import { sql } from "../../../../db";
 import { hashPassword } from "../../../../lib/auth/password";
 import { z } from "zod";
 
-const input = z.object({ token: z.string().min(32), password: z.string().min(12).max(128) });
+const input = z.object({ email: z.string().email().transform(v=>v.toLowerCase().trim()), code: z.string().regex(/^\d{6}$/), password: z.string().min(12).max(128) });
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -12,17 +12,17 @@ function hashToken(token: string) {
 export async function POST(request: Request) {
   try {
     const parsed = input.safeParse(await request.json());
-    if (!parsed.success) return Response.json({ error: "Use a valid reset link and password of at least 12 characters." }, { status: 400 });
+    if (!parsed.success) return Response.json({ error: "Use a valid email, 6-digit code, and password of at least 12 characters." }, { status: 400 });
 
-    const tokenHash = hashToken(parsed.data.token);
-    const rows = await sql<{ id: string; userId: string }[]>`
-      select t.id,t.user_id as "userId"
+    const rows = await sql<{ id: string; userId: string; role: string }[]>`
+      select t.id,t.user_id as "userId",u.role
       from password_reset_tokens t
       join users u on u.id=t.user_id
-      where t.token_hash=${tokenHash}
+      where t.code_hash=${hashToken(parsed.data.code)}
+        and u.email=${parsed.data.email}
         and t.used_at is null
         and t.expires_at>now()
-        and u.role in ('super_admin','sub_admin')
+        and u.role in ('customer','super_admin','sub_admin')
         and u.status='active'
       limit 1
     `;
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       await tx`update password_reset_tokens set used_at=now() where id=${token.id}`;
       await tx`update sessions set revoked_at=now() where user_id=${token.userId} and revoked_at is null`;
     });
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, role: token.role });
   } catch (error) {
     console.error("Password reset failed", error);
     return Response.json({ error: "Password reset failed. Please try again." }, { status: 500 });

@@ -1,12 +1,12 @@
 import { sql } from "../../../db";
 
 const catalog:Record<string,{name:string;price:number}> = {
-  "atlas-ui-kit": { name: "Atlas UI System", price: 7900 },
-  focusflow: { name: "FocusFlow", price: 3900 },
-  "launch-playbook": { name: "The Launch Playbook", price: 2900 },
-  "motion-foundry": { name: "Motion Foundry", price: 5900 },
-  "notion-ops": { name: "Notion Ops HQ", price: 2400 },
-  "type-craft": { name: "Type Craft", price: 8900 },
+  "ps-plus-1-mois": { name: "Carte PlayStation Plus 1 mois", price: 9900 },
+  "ps-plus-3-mois": { name: "Carte PlayStation Plus 3 mois", price: 24900 },
+  "xbox-game-pass-1-mois": { name: "Xbox Game Pass 1 mois", price: 11900 },
+  "xbox-gift-card-100-mad": { name: "Carte Xbox 100 MAD", price: 10000 },
+  "netflix-1-mois": { name: "Netflix 1 mois", price: 12900 },
+  "netflix-3-mois": { name: "Netflix 3 mois", price: 34900 },
 };
 
 async function readJson<T>(response: Response): Promise<T & { error?:{message?:string} }> {
@@ -39,7 +39,7 @@ export async function POST(request:Request) {
       if (!product) throw new Error("Unknown product");
       const quantity = Math.max(1, Math.min(5, item.quantity ?? 1));
       total += product.price * quantity;
-      form.set(`line_items[${index}][price_data][currency]`, "usd");
+      form.set(`line_items[${index}][price_data][currency]`, "mad");
       form.set(`line_items[${index}][price_data][product_data][name]`, product.name);
       form.set(`line_items[${index}][price_data][unit_amount]`, String(product.price));
       form.set(`line_items[${index}][quantity]`, String(quantity));
@@ -55,7 +55,7 @@ export async function POST(request:Request) {
       return Response.json({ error: session.error?.message ?? "Checkout could not be created." }, { status: 502 });
     }
     await sql`insert into orders(email,status,payment_provider,provider_session_id,subtotal_cents,tax_cents,total_cents,currency)
-      values(${email},'pending','stripe',${session.id},${total},0,${total},'usd')`;
+      values(${email},'pending','stripe',${session.id},${total},0,${total},'mad')`;
     return Response.json({ checkoutUrl: session.url });
   } catch (error) {
     return Response.json({ error:error instanceof Error?error.message:"Checkout is unavailable." }, { status: 500 });

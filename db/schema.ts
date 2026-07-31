@@ -25,7 +25,12 @@ export const sessions=pgTable("sessions",{
 });
 export const passwordResetTokens=pgTable("password_reset_tokens",{
   id:uuid("id").primaryKey().defaultRandom(),userId:uuid("user_id").notNull().references(()=>users.id,{onDelete:"cascade"}),
-  tokenHash:text("token_hash").notNull().unique(),expiresAt:timestamp("expires_at",{withTimezone:true}).notNull(),
+  tokenHash:text("token_hash").notNull().unique(),codeHash:text("code_hash"),expiresAt:timestamp("expires_at",{withTimezone:true}).notNull(),
+  usedAt:timestamp("used_at",{withTimezone:true}),createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),
+});
+export const emailVerificationTokens=pgTable("email_verification_tokens",{
+  id:uuid("id").primaryKey().defaultRandom(),userId:uuid("user_id").notNull().references(()=>users.id,{onDelete:"cascade"}),
+  tokenHash:text("token_hash").notNull().unique(),codeHash:text("code_hash"),expiresAt:timestamp("expires_at",{withTimezone:true}).notNull(),
   usedAt:timestamp("used_at",{withTimezone:true}),createdAt:timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),
 });
 export const products=pgTable("products",{
@@ -78,4 +83,11 @@ export const auditLog=pgTable("audit_log",{
 export const supportTickets=pgTable("support_tickets",{
   id:uuid("id").primaryKey().defaultRandom(),userId:uuid("user_id").notNull().references(()=>users.id),
   subject:text("subject").notNull(),status:text("status").notNull().default("open"),priority:text("priority").notNull().default("normal"),...timestamps,
+});
+export const contactMessages=pgTable("contact_messages",{
+  id:uuid("id").primaryKey().defaultRandom(),name:text("name").notNull(),email:text("email").notNull(),
+  subject:text("subject").notNull(),message:text("message").notNull(),status:text("status").notNull().default("new"),...timestamps,
+});
+export const newsletterSubscribers=pgTable("newsletter_subscribers",{
+  id:uuid("id").primaryKey().defaultRandom(),email:text("email").notNull().unique(),status:text("status").notNull().default("subscribed"),...timestamps,
 });

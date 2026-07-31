@@ -65,7 +65,7 @@ export function AdminLoginForm() {
       <button className="button primary wide" disabled={busy}>
         {busy ? "Signing in..." : "Sign in securely ->"}
       </button>
-      <a href="/forgot-password">Forgot password?</a>
+      <a href="/forgot-password?scope=admin">Forgot password?</a>
     </form>
   );
 }

@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 
-type ResetResponse = { error?: string };
+type ResetResponse = { error?: string; role?: string };
 
 async function readResetResponse(response: Response): Promise<ResetResponse> {
   const text = await response.text();
@@ -14,7 +14,8 @@ async function readResetResponse(response: Response): Promise<ResetResponse> {
   }
 }
 
-export function ResetPasswordForm({ token }: { token: string }) {
+export function ResetPasswordForm({ token: _token }: { token: string }) {
+  void _token;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -33,7 +34,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
     const response = await fetch("/api/auth/reset-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, password: form.get("password") }),
+      body: JSON.stringify({ email: form.get("email"), code: form.get("code"), password: form.get("password") }),
     });
     const body = await readResetResponse(response);
     if (!response.ok) {
@@ -41,22 +42,30 @@ export function ResetPasswordForm({ token }: { token: string }) {
       setBusy(false);
       return;
     }
-    window.location.assign("/admin/login");
+    window.location.assign(body.role === "super_admin" || body.role === "sub_admin" ? "/admin/login" : "/login");
   }
 
   return (
     <form className="auth-form" onSubmit={submit}>
       {error && <div className="admin-alert">{error}</div>}
       <label>
-        New password
+        Email
+        <input name="email" type="email" autoComplete="username" required />
+      </label>
+      <label>
+        Code reçu par email
+        <input name="code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required />
+      </label>
+      <label>
+        Nouveau mot de passe
         <input name="password" type="password" minLength={12} autoComplete="new-password" required />
       </label>
       <label>
-        Confirm password
+        Confirmer le mot de passe
         <input name="confirmPassword" type="password" minLength={12} autoComplete="new-password" required />
       </label>
-      <button className="button primary wide" disabled={busy || !token}>
-        {busy ? "Saving..." : "Save new password"}
+      <button className="button primary wide" disabled={busy}>
+        {busy ? "Validation..." : "Changer le mot de passe"}
       </button>
     </form>
   );

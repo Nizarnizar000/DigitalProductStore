@@ -4,7 +4,27 @@ import tls from "node:tls";
 type ResetEmail = {
   to: string;
   name: string;
-  resetUrl: string;
+  code: string;
+};
+
+type VerificationEmail = {
+  to: string;
+  name: string;
+  code: string;
+};
+
+type ContactEmail = {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+};
+
+type EmailMessage = {
+  to: string;
+  name: string;
+  subject: string;
+  text: string;
 };
 
 type SmtpSocket = net.Socket | tls.TLSSocket;
@@ -43,7 +63,7 @@ function connectSmtp(host: string, port: number, secure: boolean) {
   });
 }
 
-async function sendWithSmtp({ to, name, resetUrl }: ResetEmail) {
+async function sendWithSmtp({ to, name, subject, text }: EmailMessage) {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
   const password = process.env.SMTP_PASSWORD;
@@ -66,23 +86,18 @@ async function sendWithSmtp({ to, name, resetUrl }: ResetEmail) {
   await command(socket, [
     `From: ${encodeHeader(from)}`,
     `To: ${encodeHeader(name)} <${encodeHeader(to)}>`,
-    "Subject: Reset your Nexora admin password",
+    `Subject: ${encodeHeader(subject)}`,
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=utf-8",
     "",
-    `Hi ${name},`,
-    "",
-    "Use this link to choose a new Nexora admin password:",
-    resetUrl,
-    "",
-    "This link expires in one hour. If you did not request it, ignore this email.",
+    text,
     ".",
   ].join("\r\n"), [250]);
   await command(socket, "QUIT", [221]);
   socket.end();
 }
 
-async function sendWithResend({ to, name, resetUrl }: ResetEmail) {
+async function sendWithResend({ to, subject, text }: EmailMessage) {
   const key = process.env.RESEND_API_KEY;
   if (!key || key === "re_replace_me") throw new Error("RESEND_API_KEY is not configured.");
   const response = await fetch("https://api.resend.com/emails", {
@@ -91,18 +106,65 @@ async function sendWithResend({ to, name, resetUrl }: ResetEmail) {
     body: JSON.stringify({
       from: process.env.EMAIL_FROM ?? "Nexora <receipts@example.com>",
       to,
-      subject: "Reset your Nexora admin password",
-      text: `Hi ${name},\n\nUse this link to choose a new Nexora admin password:\n${resetUrl}\n\nThis link expires in one hour.`,
+      subject,
+      text,
     }),
   });
   if (!response.ok) throw new Error(`Resend failed with status ${response.status}.`);
 }
 
-export async function sendPasswordResetEmail(input: ResetEmail) {
+async function sendEmail(input: EmailMessage) {
   if (process.env.SMTP_HOST) {
     await sendWithSmtp(input);
     return;
   }
 
   await sendWithResend(input);
+}
+
+export async function sendPasswordResetEmail({ to, name, code }: ResetEmail) {
+  await sendEmail({
+    to,
+    name,
+    subject: "Code de réinitialisation Nexora",
+    text: [
+      `Bonjour ${name},`,
+      "",
+      "Votre code pour changer le mot de passe Nexora est :",
+      code,
+      "",
+      "Ce code expire dans 10 minutes. Si vous n'avez rien demandé, ignorez cet email.",
+    ].join("\r\n"),
+  });
+}
+
+export async function sendEmailVerification({ to, name, code }: VerificationEmail) {
+  await sendEmail({
+    to,
+    name,
+    subject: "Code de vérification Nexora",
+    text: [
+      `Bonjour ${name},`,
+      "",
+      "Votre code pour vérifier votre compte Nexora est :",
+      code,
+      "",
+      "Ce code expire dans 10 minutes. Si vous n'avez pas créé ce compte, ignorez cet email.",
+    ].join("\r\n"),
+  });
+}
+
+export async function sendContactMessageEmail({ name, email, subject, message }: ContactEmail) {
+  await sendEmail({
+    to: process.env.CONTACT_TO_EMAIL ?? process.env.SMTP_USER ?? "Nizarelkarni@gmail.com",
+    name: "Nexora Admin",
+    subject: `Nouveau contact Nexora: ${subject}`,
+    text: [
+      `Nom: ${name}`,
+      `Email: ${email}`,
+      `Sujet: ${subject}`,
+      "",
+      message,
+    ].join("\r\n"),
+  });
 }
