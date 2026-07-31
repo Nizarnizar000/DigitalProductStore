@@ -25,12 +25,36 @@ type EmailMessage = {
   name: string;
   subject: string;
   text: string;
+  html?: string;
 };
 
 type SmtpSocket = net.Socket | tls.TLSSocket;
 
 function encodeHeader(value: string) {
   return value.replace(/\r|\n/g, "");
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function codeEmailHtml({ title, name, intro, code, outro }: { title: string; name: string; intro: string; code: string; outro: string }) {
+  return [
+    '<div style="margin:0;background:#f7f5f0;padding:32px;font-family:Arial,sans-serif;color:#161713">',
+    '<div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #dedbd2;border-radius:16px;padding:32px">',
+    '<div style="font-size:13px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#667200">NEXORA</div>',
+    `<h1 style="margin:18px 0 10px;font-size:30px;line-height:1.05;color:#161713">${escapeHtml(title)}</h1>`,
+    `<p style="font-size:15px;line-height:1.6;color:#606258">Bonjour ${escapeHtml(name)},</p>`,
+    `<p style="font-size:15px;line-height:1.6;color:#606258">${escapeHtml(intro)}</p>`,
+    `<div style="margin:28px 0;padding:22px;border-radius:14px;background:#101418;color:#d8ff55;text-align:center;font-size:42px;font-weight:900;letter-spacing:.28em">${escapeHtml(code)}</div>`,
+    `<p style="font-size:13px;line-height:1.6;color:#777b70">${escapeHtml(outro)}</p>`,
+    "</div>",
+    "</div>",
+  ].join("");
 }
 
 function waitFor(socket: SmtpSocket, expected: number[]) {
@@ -63,7 +87,7 @@ function connectSmtp(host: string, port: number, secure: boolean) {
   });
 }
 
-async function sendWithSmtp({ to, name, subject, text }: EmailMessage) {
+async function sendWithSmtp({ to, name, subject, text, html }: EmailMessage) {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
   const password = process.env.SMTP_PASSWORD;
@@ -83,21 +107,40 @@ async function sendWithSmtp({ to, name, subject, text }: EmailMessage) {
   await command(socket, `MAIL FROM:<${fromAddress}>`, [250]);
   await command(socket, `RCPT TO:<${to}>`, [250, 251]);
   await command(socket, "DATA", [354]);
+  const boundary = `nexora-${Date.now().toString(36)}`;
+  const body = html
+    ? [
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      "",
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      text,
+      `--${boundary}`,
+      "Content-Type: text/html; charset=utf-8",
+      "",
+      html,
+      `--${boundary}--`,
+    ]
+    : [
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      text,
+    ];
+
   await command(socket, [
     `From: ${encodeHeader(from)}`,
     `To: ${encodeHeader(name)} <${encodeHeader(to)}>`,
     `Subject: ${encodeHeader(subject)}`,
     "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=utf-8",
-    "",
-    text,
+    ...body,
     ".",
   ].join("\r\n"), [250]);
   await command(socket, "QUIT", [221]);
   socket.end();
 }
 
-async function sendWithResend({ to, subject, text }: EmailMessage) {
+async function sendWithResend({ to, subject, text, html }: EmailMessage) {
   const key = process.env.RESEND_API_KEY;
   if (!key || key === "re_replace_me") throw new Error("RESEND_API_KEY is not configured.");
   const response = await fetch("https://api.resend.com/emails", {
@@ -108,6 +151,7 @@ async function sendWithResend({ to, subject, text }: EmailMessage) {
       to,
       subject,
       text,
+      html,
     }),
   });
   if (!response.ok) throw new Error(`Resend failed with status ${response.status}.`);
@@ -135,6 +179,13 @@ export async function sendPasswordResetEmail({ to, name, code }: ResetEmail) {
       "",
       "Ce code expire dans 10 minutes. Si vous n'avez rien demandé, ignorez cet email.",
     ].join("\r\n"),
+    html: codeEmailHtml({
+      title: "Code de reinitialisation Nexora",
+      name,
+      intro: "Votre code pour changer le mot de passe Nexora est :",
+      code,
+      outro: "Ce code expire dans 10 minutes. Si vous n avez rien demande, ignorez cet email.",
+    }),
   });
 }
 
@@ -151,6 +202,13 @@ export async function sendEmailVerification({ to, name, code }: VerificationEmai
       "",
       "Ce code expire dans 10 minutes. Si vous n'avez pas créé ce compte, ignorez cet email.",
     ].join("\r\n"),
+    html: codeEmailHtml({
+      title: "Code de verification Nexora",
+      name,
+      intro: "Votre code pour verifier votre compte Nexora est :",
+      code,
+      outro: "Ce code expire dans 10 minutes. Si vous n avez pas cree ce compte, ignorez cet email.",
+    }),
   });
 }
 
@@ -168,3 +226,10 @@ export async function sendContactMessageEmail({ name, email, subject, message }:
     ].join("\r\n"),
   });
 }
+
+
+
+
+
+
+
