@@ -21,7 +21,7 @@ export async function POST(request:Request) {
         and u.email=${parsed.data.email}
         and t.used_at is null
         and t.expires_at>now()
-        and u.role='customer'
+        and u.role in ('customer','sub_admin')
         and u.status='active'
       limit 1
     `;

@@ -15,6 +15,7 @@ export async function POST(request:Request){
     if(!valid){const attempts=user.failedLoginAttempts+1;await sql`update users set failed_login_attempts=${attempts},locked_until=${attempts>=5?new Date(Date.now()+15*60*1000).toISOString():null} where id=${user.id}`;return generic()}
     if(user.status!=="active")return Response.json({error:"This account is not active."},{status:403});
     if(parsed.data.scope==="admin"&&!["super_admin","sub_admin"].includes(user.role))return Response.json({error:"Administrator access is not assigned to this account."},{status:403});
+    if(parsed.data.scope==="admin"&&user.role==="sub_admin"&&!user.emailVerified)return Response.json({error:"Please verify your email before signing in."},{status:403});
     if(parsed.data.scope==="customer"&&user.role==="customer"&&!user.emailVerified)return Response.json({error:"Please verify your email before signing in."},{status:403});
     await sql`update users set failed_login_attempts=0,locked_until=null,updated_at=now() where id=${user.id}`;
     await createSession(user,request);return Response.json({user:{email:user.email,displayName:user.displayName,role:user.role}});
