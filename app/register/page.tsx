@@ -1,2 +1,5 @@
-import { CustomerAuthForm } from "../login/customer-auth-form";
-export default function RegisterPage(){return <CustomerAuthForm mode="register"/>}
+import { notFound } from "next/navigation";
+
+export default function RegisterPage() {
+  notFound();
+}

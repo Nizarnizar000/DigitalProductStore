@@ -2,7 +2,7 @@ import { boolean, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, 
 
 export const userRole = pgEnum("user_role", ["customer","sub_admin","super_admin"]);
 export const userStatus = pgEnum("user_status", ["active","suspended","deleted"]);
-export const productStatus = pgEnum("product_status", ["draft","published","archived"]);
+export const productStatus = pgEnum("product_status", ["draft","published","archived","out_of_stock"]);
 export const orderStatus = pgEnum("order_status", ["pending","paid","failed","canceled","refunded"]);
 
 const timestamps = {

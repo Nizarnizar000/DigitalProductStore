@@ -7,6 +7,6 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   const viewer = await currentUser();
   if (!viewer) redirect("/admin/login");
-  if (!["super_admin","sub_admin"].includes(viewer.role)) redirect("/account");
+  if (!["super_admin","sub_admin"].includes(viewer.role)) redirect("/admin/login");
   return <AdminDashboard viewer={{ email: viewer.email, displayName: viewer.displayName }} />;
 }

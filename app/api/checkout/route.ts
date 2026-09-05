@@ -1,14 +1,5 @@
 import { sql } from "../../../db";
 
-const catalog:Record<string,{name:string;price:number}> = {
-  "ps-plus-1-mois": { name: "Carte PlayStation Plus 1 mois", price: 9900 },
-  "ps-plus-3-mois": { name: "Carte PlayStation Plus 3 mois", price: 24900 },
-  "xbox-game-pass-1-mois": { name: "Xbox Game Pass 1 mois", price: 11900 },
-  "xbox-gift-card-100-mad": { name: "Carte Xbox 100 MAD", price: 10000 },
-  "netflix-1-mois": { name: "Netflix 1 mois", price: 12900 },
-  "netflix-3-mois": { name: "Netflix 3 mois", price: 34900 },
-};
-
 async function readJson<T>(response: Response): Promise<T & { error?:{message?:string} }> {
   const text = await response.text();
   if (!text) return {} as T & { error?:{message?:string} };
@@ -34,8 +25,13 @@ export async function POST(request:Request) {
       "metadata[email]": email,
     });
     let total = 0;
+    const slugs = [...new Set(items.map(item => item.slug))];
+    const rows = await sql<{slug:string;name:string;price:number}[]>`
+      select slug,name,price_cents as price from products where status='published' and slug in ${sql(slugs)}
+    `;
+    const catalog = new Map(rows.map(product => [product.slug, product]));
     items.forEach((item, index) => {
-      const product = catalog[item.slug];
+      const product = catalog.get(item.slug);
       if (!product) throw new Error("Unknown product");
       const quantity = Math.max(1, Math.min(5, item.quantity ?? 1));
       total += product.price * quantity;

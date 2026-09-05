@@ -7,6 +7,7 @@ const input=z.object({email:z.string().email().transform(v=>v.toLowerCase().trim
 export async function POST(request:Request){
   try{
     const parsed=input.safeParse(await request.json());if(!parsed.success)return Response.json({error:"Invalid credentials."},{status:400});
+    if(parsed.data.scope==="customer")return Response.json({error:"Customer accounts are disabled."},{status:404});
     const rows=await sql<(AppUser&{passwordHash:string|null;failedLoginAttempts:number;lockedUntil:Date|null;emailVerified:boolean})[]>`select id,email,coalesce(display_name,email) as "displayName",role,status,password_hash as "passwordHash",failed_login_attempts as "failedLoginAttempts",locked_until as "lockedUntil",email_verified as "emailVerified" from users where email=${parsed.data.email} limit 1`;
     const user=rows[0];const generic=()=>Response.json({error:"Email or password is incorrect."},{status:401});
     if(!user||!user.passwordHash)return generic();

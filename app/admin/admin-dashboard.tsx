@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { LogoutButton } from "./logout-button";
 
-type Product = { id:string; slug:string; name:string; description:string; productType:string; status:"draft"|"published"|"archived"; priceCents:number; currency:string; version:string; downloadLimit:number; updatedAt:string };
+type Product = { id:string; slug:string; name:string; description:string; productType:string; status:"draft"|"published"|"archived"|"out_of_stock"; priceCents:number; currency:string; version:string; downloadLimit:number; updatedAt:string };
 type Order = { id:string; email:string; status:string; totalCents:number; currency:string; createdAt:string };
 type Audit = { action:string; resourceType:string; resourceId:string; createdAt:string };
 type Customer = { id:string; email:string; displayName:string; emailVerified:boolean; createdAt:string };
@@ -14,6 +14,16 @@ type ApiError = { error?: string };
 
 const money = (cents:number,currency="mad") => new Intl.NumberFormat("fr-MA",{style:"currency",currency:currency.toUpperCase()}).format(cents/100);
 const date = (value:string) => new Intl.DateTimeFormat("fr-MA",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value));
+const productCategories = [
+  "Instagram","Adobe Creative Cloud","Headspace","Picsart","n8n Starter","Surfshark VPN","ChatGPT",
+  "Amazon Prime Video","Kling AI","QuillBot","ExpressVPN","Dreamina","Codex","Canva",
+  "LinkedIn Career","Spotify","Apple Music","Cursor Pro","Grok","CapCut Pro","LinkedIn Business",
+  "Telegram Premium","Suno Premier","Perplexity Pro","HMA VPN","Claude","Lovable AI","YouTube Premium",
+  "Gamma Pro","HeyGen Creator","Proton VPN","ElevenLabs","Manus","Xbox Game Pass Ultimate",
+  "Microsoft 365","Meitu SVIP","Google AI / Gemini","Figma","Netflix","Paramount+","TikTok US",
+  "Google AI Pro","Fortnite","Gmail","NordVPN","Duolingo Super","Adobe Full Apps","Veo 3 Ultra",
+  "Microsoft Office 365","Hotmail","Notion","OpenArt","Supabase Pro","Outlook","Antigravity",
+];
 
 async function readApi<T extends ApiError>(response:Response):Promise<T> {
   const text = await response.text();
@@ -28,6 +38,7 @@ export function AdminDashboard({viewer}:{viewer:{email:string;displayName:string
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
   const [showCreate,setShowCreate]=useState(false);
+  const [editing,setEditing]=useState<Product|null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -56,13 +67,26 @@ export function AdminDashboard({viewer}:{viewer:{email:string;displayName:string
     } catch { setError("Le produit n'a pas pu être créé."); }
   }
 
-  async function setProductStatus(product:Product,status:Product["status"]) {
+  async function updateProduct(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing) return;
+    setError("");
+    const values = Object.fromEntries(new FormData(event.currentTarget));
     try {
-      const response = await fetch(`/api/admin/products/${product.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
+      const response = await fetch(`/api/admin/products/${editing.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(values)});
       const body = await readApi<ApiError>(response);
       if (!response.ok) { setError(body.error ?? "Le produit n'a pas pu être modifié."); return; }
+      setEditing(null);
       await load();
     } catch { setError("Le produit n'a pas pu être modifié."); }
+  }
+
+  async function deleteProduct(product:Product) {
+    if (!window.confirm(`Supprimer ${product.name} de la boutique ?`)) return;
+    const response = await fetch(`/api/admin/products/${product.id}`,{method:"DELETE"});
+    const body = await readApi<ApiError>(response);
+    if (!response.ok) { setError(body.error ?? "Le produit n'a pas pu être supprimé."); return; }
+    await load();
   }
 
   async function refund(order:Order) {
@@ -74,7 +98,7 @@ export function AdminDashboard({viewer}:{viewer:{email:string;displayName:string
   }
 
   const roleLabel = !overview ? "Vérification" : overview.admin.role==="super_admin" ? "Super Admin" : "Sub-Admin";
-  const menu = ["Vue d'ensemble","Produits","Commandes","Clients","Abonnés","Contacts","Journal"];
+  const menu = ["Vue d'ensemble","Produits","Commandes","Abonnés","Contacts","Journal"];
 
   return <main className="dashboard admin live-admin">
     <aside>
@@ -84,24 +108,28 @@ export function AdminDashboard({viewer}:{viewer:{email:string;displayName:string
       <hr/><a href="/">Voir la boutique</a><LogoutButton/>
     </aside>
     <section>
-      <div className="dash-head"><div><span className="overline">{roleLabel}</span><h1>{section}</h1><p className="admin-viewer">Connecté avec {overview?.admin.email??viewer.email}</p></div>{section==="Produits"&&<button className="button dark" onClick={()=>setShowCreate(true)}>+ Nouveau produit</button>}</div>
+      <div className="dash-head"><div><span className="overline">{roleLabel}</span><h1>{section}</h1><p className="admin-viewer">Connecté avec {overview?.admin.email??viewer.email}</p></div>{section==="Produits"&&<button className="button dark" onClick={()=>setShowCreate(true)}>Ajouter</button>}</div>
       {error&&<div className="admin-alert" role="alert">{error}</div>}
       {loading?<div className="admin-loading" role="status">Chargement...</div>:<>
-        {section==="Vue d'ensemble"&&overview&&<><div className="metrics"><div><span>Revenu payé</span><b>{money(overview.metrics.revenueCents)}</b><small>Commandes validées</small></div><div><span>Commandes</span><b>{overview.metrics.orders}</b><small>Tous les statuts</small></div><div><span>Clients</span><b>{overview.metrics.customers}</b><small>Comptes actifs</small></div><div><span>Produits live</span><b>{overview.metrics.products}</b><small>Catalogue publié</small></div></div><div className="admin-grid"><article><h2>Commandes récentes</h2><OrderTable orders={overview.orders} onRefund={refund}/></article><article><h2>Contacts récents</h2>{overview.contacts.length?overview.contacts.slice(0,5).map(item=><div className="audit-row" key={item.id}><b>{item.subject}</b><span>{item.name} · {item.email}</span><small>{date(item.createdAt)}</small></div>):<Empty title="Aucun message contact."/>}</article></div></>}
-        {section==="Produits"&&<ProductTable products={products} onReload={load} onStatus={setProductStatus}/>}
+        {section==="Vue d'ensemble"&&overview&&<><div className="metrics"><div><span>Revenu payé</span><b>{money(overview.metrics.revenueCents)}</b><small>Commandes validées</small></div><div><span>Commandes</span><b>{overview.metrics.orders}</b><small>Tous les statuts</small></div><div><span>Abonnés</span><b>{overview.metrics.customers}</b><small>Newsletter active</small></div><div><span>Produits live</span><b>{overview.metrics.products}</b><small>Catalogue publié</small></div></div><div className="admin-grid"><article><h2>Commandes récentes</h2><OrderTable orders={overview.orders} onRefund={refund}/></article><article><h2>Contacts récents</h2>{overview.contacts.length?overview.contacts.slice(0,5).map(item=><div className="audit-row" key={item.id}><b>{item.subject}</b><span>{item.name} · {item.email}</span><small>{date(item.createdAt)}</small></div>):<Empty title="Aucun message contact."/>}</article></div></>}
+        {section==="Produits"&&<ProductTable products={products} onReload={load} onEdit={setEditing} onDelete={deleteProduct}/>}
         {section==="Commandes"&&overview&&<div className="admin-table-card"><h2>Commandes et remboursements</h2><OrderTable orders={overview.orders} onRefund={refund}/></div>}
-        {section==="Clients"&&overview&&<div className="admin-table-card"><h2>Clients inscrits</h2><table><thead><tr><th>Nom</th><th>Email</th><th>Vérifié</th><th>Date</th></tr></thead><tbody>{overview.customers.map(c=><tr key={c.id}><td>{c.displayName}</td><td>{c.email}</td><td>{c.emailVerified?"Oui":"Non"}</td><td>{date(c.createdAt)}</td></tr>)}</tbody></table></div>}
         {section==="Abonnés"&&overview&&<div className="admin-table-card"><h2>Abonnés newsletter</h2><table><thead><tr><th>Email</th><th>Statut</th><th>Date</th></tr></thead><tbody>{overview.subscribers.map(s=><tr key={s.id}><td>{s.email}</td><td>{s.status}</td><td>{date(s.createdAt)}</td></tr>)}</tbody></table></div>}
         {section==="Contacts"&&overview&&<div className="admin-table-card"><h2>Messages contact</h2>{overview.contacts.length?overview.contacts.map(item=><div className="audit-row wide" key={item.id}><b>{item.subject}</b><span>{item.name} · {item.email}</span><p>{item.message}</p><small>{date(item.createdAt)}</small></div>):<Empty title="Aucun message contact."/>}</div>}
         {section==="Journal"&&overview&&<div className="admin-table-card"><h2>Journal</h2>{overview.audit.length?overview.audit.map((item,index)=><div className="audit-row wide" key={`${item.resourceId}-${index}`}><b>{item.action}</b><span>{item.resourceType} · {item.resourceId}</span><small>{date(item.createdAt)}</small></div>):<Empty title="Aucune activité."/>}</div>}
       </>}
     </section>
-    {showCreate&&<div className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><form onSubmit={createProduct}><div className="modal-head"><h2 id="create-title">Créer un produit</h2><button type="button" onClick={()=>setShowCreate(false)} aria-label="Fermer">×</button></div><label>Nom<input name="name" required minLength={2}/></label><label>Slug URL<input name="slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="carte-ps-plus"/></label><label>Description<textarea name="description" required minLength={10}/></label><div className="form-grid"><label>Type<select name="productType"><option>PS Plus</option><option>Xbox</option><option>Netflix</option><option>Carte cadeau</option><option>Gaming</option><option>Streaming</option></select></label><label>Prix (MAD)<input name="price" required type="number" min="0" step=".01"/></label><label>Version<input name="version" required defaultValue="Code digital"/></label></div><button className="button dark wide">Enregistrer en brouillon</button></form></div>}
+    {showCreate&&<ProductModal title="Ajouter un produit" submitLabel="Ajouter à la boutique" onSubmit={createProduct} close={()=>setShowCreate(false)}/>}
+    {editing&&<ProductModal title={`Modifier ${editing.name}`} submitLabel="Enregistrer" product={editing} onSubmit={updateProduct} close={()=>setEditing(null)}/>}
   </main>;
 }
 
-function ProductTable({products,onReload,onStatus}:{products:Product[];onReload:()=>void;onStatus:(product:Product,status:Product["status"])=>void}) {
-  return <div className="admin-table-card"><div className="table-head"><div><h2>Catalogue produits</h2><p>{products.length} produits en base</p></div><button onClick={()=>void onReload()}>Actualiser</button></div><table><thead><tr><th>Produit</th><th>Type</th><th>Prix</th><th>Version</th><th>Statut</th><th>Action</th></tr></thead><tbody>{products.map(product=><tr key={product.id}><td><b>{product.name}</b><small>/{product.slug}</small></td><td>{product.productType}</td><td>{money(product.priceCents,product.currency)}</td><td>{product.version}</td><td><span className={`status ${product.status}`}>{product.status}</span></td><td><select aria-label={`Changer ${product.name}`} value={product.status} onChange={event=>void onStatus(product,event.target.value as Product["status"])}><option value="draft">Brouillon</option><option value="published">Publié</option><option value="archived">Archivé</option></select></td></tr>)}</tbody></table></div>;
+function ProductTable({products,onReload,onEdit,onDelete}:{products:Product[];onReload:()=>void;onEdit:(product:Product)=>void;onDelete:(product:Product)=>void}) {
+  return <div className="admin-table-card"><div className="table-head"><div><h2>Catalogue produits</h2><p>{products.length} produits visibles dans l&apos;administration</p></div><button onClick={()=>void onReload()}>Actualiser</button></div>{products.length?<table><thead><tr><th>Produit</th><th>Catégorie</th><th>Prix</th><th>Statut</th><th>Actions</th></tr></thead><tbody>{products.map(product=><tr key={product.id}><td><b>{product.name}</b><small>/{product.slug}</small></td><td>{product.productType}</td><td>{money(product.priceCents,product.currency)}</td><td><span className={`status ${product.status}`}>{product.status}</span></td><td><button className="table-action" onClick={()=>onEdit(product)}>Modifier</button> <button className="table-action danger" onClick={()=>void onDelete(product)}>Supprimer</button></td></tr>)}</tbody></table>:<Empty title="Aucun produit. Cliquez sur Ajouter pour créer la première carte."/>}</div>;
+}
+
+function ProductModal({title,submitLabel,product,onSubmit,close}:{title:string;submitLabel:string;product?:Product;onSubmit:(event:FormEvent<HTMLFormElement>)=>void;close:()=>void}) {
+  return <div className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="product-title"><form onSubmit={onSubmit}><div className="modal-head"><h2 id="product-title">{title}</h2><button type="button" onClick={close} aria-label="Fermer">×</button></div><label>Nom du produit<input name="name" required minLength={2} defaultValue={product?.name} placeholder="ChatGPT Plus 1 mois"/></label><div className="form-grid"><label>Catégorie<select name="productType" defaultValue={product?.productType??"ChatGPT"}>{productCategories.map(category=><option key={category}>{category}</option>)}</select></label><label>Prix (MAD)<input name="price" required type="number" min="0" step=".01" defaultValue={product?String(product.priceCents/100):""} placeholder="199"/></label><label>Stock<select name="status" defaultValue={product?.status==="out_of_stock"?"out_of_stock":"published"}><option value="published">Disponible</option><option value="out_of_stock">Out of stock</option></select></label></div><div className="restricted-note"><b>Exemples rapides</b><p>ChatGPT Plus 1 mois, YouTube Premium 1 mois, Netflix Premium 1 mois, Canva Pro 1 mois. Entrez votre prix final en MAD.</p></div><button className="button dark wide">{submitLabel}</button></form></div>;
 }
 
 function OrderTable({orders,onRefund}:{orders:Order[];onRefund:(order:Order)=>void}) {

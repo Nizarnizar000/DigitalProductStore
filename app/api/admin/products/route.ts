@@ -1,6 +1,48 @@
 import { sql } from "../../../../db";
 import { errorResponse,requireAdmin,writeAudit } from "../../../../db/admin-auth";
-const seed=[["ps-plus-1-mois","Carte PlayStation Plus 1 mois","Code digital PS Plus livré après validation du paiement.","PS Plus",9900,"Code digital"],["ps-plus-3-mois","Carte PlayStation Plus 3 mois","Abonnement PlayStation Plus 3 mois pour comptes compatibles.","PS Plus",24900,"Code digital"],["xbox-game-pass-1-mois","Xbox Game Pass 1 mois","Code Xbox Game Pass digital, idéal pour jeux console et PC compatibles.","Xbox",11900,"Code digital"],["xbox-gift-card-100-mad","Carte Xbox 100 MAD","Carte cadeau Xbox pour acheter jeux, extensions et contenus digitaux.","Xbox",10000,"Code digital"],["netflix-1-mois","Netflix 1 mois","Recharge Netflix digitale pour profiter de films et séries en ligne.","Netflix",12900,"Code digital"],["netflix-3-mois","Netflix 3 mois","Recharge Netflix digitale 3 mois avec livraison sécurisée.","Netflix",34900,"Code digital"]];
-async function seedGiftCards(){for(const p of seed)await sql`insert into products(slug,name,description,product_type,status,price_cents,currency,version,download_limit) values (${String(p[0])},${String(p[1])},${String(p[2])},${String(p[3])},'published',${Number(p[4])},'mad',${String(p[5])},1) on conflict(slug) do update set name=excluded.name,description=excluded.description,product_type=excluded.product_type,price_cents=excluded.price_cents,currency='mad',version=excluded.version,status='published',updated_at=now()`}
-export async function GET(){try{await requireAdmin("products");await seedGiftCards();const products=await sql`select id,slug,name,description,product_type as "productType",status,price_cents as "priceCents",currency,version,download_limit as "downloadLimit",updated_at as "updatedAt" from products order by updated_at desc`;return Response.json({products})}catch(error){return errorResponse(error)}}
-export async function POST(request:Request){try{const admin=await requireAdmin("products");const body=await request.json() as Record<string,unknown>;const name=String(body.name??"").trim(),slug=String(body.slug??"").trim().toLowerCase(),description=String(body.description??"").trim(),productType=String(body.productType??"").trim(),version=String(body.version??"Code digital").trim(),priceCents=Math.round(Number(body.price)*100);if(name.length<2||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)||description.length<10||!productType||!Number.isInteger(priceCents)||priceCents<0)return Response.json({error:"Entrez des informations produit valides."},{status:400});const rows=await sql<{id:string}[]>`insert into products(slug,name,description,product_type,status,price_cents,currency,version,download_limit) values (${slug},${name},${description},${productType},'draft',${priceCents},'mad',${version},1) returning id`;await writeAudit(admin,"product.create","product",rows[0].id,{name,slug});return Response.json({id:rows[0].id},{status:201})}catch(error){return errorResponse(error)}}
+
+const categories = new Set([
+  "Instagram","Adobe Creative Cloud","Headspace","Picsart","n8n Starter","Surfshark VPN","ChatGPT",
+  "Amazon Prime Video","Kling AI","QuillBot","ExpressVPN","Dreamina","Codex","Canva",
+  "LinkedIn Career","Spotify","Apple Music","Cursor Pro","Grok","CapCut Pro","LinkedIn Business",
+  "Telegram Premium","Suno Premier","Perplexity Pro","HMA VPN","Claude","Lovable AI","YouTube Premium",
+  "Gamma Pro","HeyGen Creator","Proton VPN","ElevenLabs","Manus","Xbox Game Pass Ultimate",
+  "Microsoft 365","Meitu SVIP","Google AI / Gemini","Figma","Netflix","Paramount+","TikTok US",
+  "Google AI Pro","Fortnite","Gmail","NordVPN","Duolingo Super","Adobe Full Apps","Veo 3 Ultra",
+  "Microsoft Office 365","Hotmail","Notion","OpenArt","Supabase Pro","Outlook","Antigravity",
+]);
+
+function slugify(value:string){
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,80);
+}
+
+function productDescription(category:string,name:string){
+  return `Code digital ${category} pour ${name}, livre apres validation du paiement.`;
+}
+
+export async function GET(){
+  try{
+    await requireAdmin("products");
+    const products=await sql`select id,slug,name,description,product_type as "productType",status,price_cents as "priceCents",currency,version,download_limit as "downloadLimit",updated_at as "updatedAt" from products where status<>'archived' order by updated_at desc`;
+    return Response.json({products});
+  }catch(error){return errorResponse(error)}
+}
+
+export async function POST(request:Request){
+  try{
+    const admin=await requireAdmin("products");
+    const body=await request.json() as Record<string,unknown>;
+    const name=String(body.name??"").trim();
+    const productType=String(body.productType??"").trim();
+    const status=body.status==="out_of_stock"?"out_of_stock":"published";
+    const priceCents=Math.round(Number(body.price)*100);
+    if(name.length<2||!categories.has(productType)||!Number.isInteger(priceCents)||priceCents<0){
+      return Response.json({error:"Entrez un nom, une categorie et un prix valides."},{status:400});
+    }
+    const baseSlug=slugify(`${productType}-${name}`);
+    const slug=`${baseSlug}-${Date.now().toString(36)}`;
+    const rows=await sql<{id:string}[]>`insert into products(slug,name,description,product_type,status,price_cents,currency,version,download_limit) values (${slug},${name},${productDescription(productType,name)},${productType},${status},${priceCents},'mad','Code digital',1) returning id`;
+    await writeAudit(admin,"product.create","product",rows[0].id,{name,slug,productType,priceCents,status});
+    return Response.json({id:rows[0].id},{status:201});
+  }catch(error){return errorResponse(error)}
+}
